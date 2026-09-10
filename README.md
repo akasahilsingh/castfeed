@@ -1,4 +1,6 @@
-# 🎬 VideoX
+# 🎬 CastFeed
+
+> **Where creator broadcasts meet social feeds.**
 
 > ⚠️ **This project is currently under active development. Features and APIs are subject to change.**
 
@@ -23,7 +25,7 @@ A **video sharing platform backend** where users can upload, watch, and engage w
 
 ## Overview
 
-VideoX is a RESTful backend API for a video-sharing platform — think YouTube-like functionality. The project currently covers the foundational architecture including:
+CastFeed is a RESTful backend API for a video-sharing and creator community platform — combining YouTube-style video broadcasting with social feed engagement. The project currently covers the foundational architecture including:
 
 - User authentication with **JWT (Access + Refresh Tokens)**
 - **Bcrypt** password hashing
@@ -54,7 +56,7 @@ VideoX is a RESTful backend API for a video-sharing platform — think YouTube-l
 ## Project Structure
 
 ```
-videox/
+castfeed/
 ├── app.js                  # Express app initialization
 ├── index.js                # Server entry point (DB connect + listen)
 ├── package.json
@@ -118,7 +120,7 @@ videox/
 
 ## Authentication
 
-VideoX uses a **dual-token authentication** strategy:
+CastFeed uses a **dual-token authentication** strategy:
 
 - **Access Token** — Short-lived (15 minutes), used to authorize API requests
 - **Refresh Token** — Long-lived (7 days), stored in the database and used to issue new access tokens without re-login
@@ -138,8 +140,8 @@ Passwords are never stored in plain text — they are hashed using **bcrypt** wi
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/videox.git
-cd videox
+git clone https://github.com/your-username/castfeed.git
+cd castfeed
 
 # 2. Install dependencies
 npm install
@@ -165,7 +167,7 @@ Create a `.env` file in the project root with the following variables:
 PORT=8000
 
 # MongoDB
-MONGODB_URI=mongodb://localhost:27017/videox
+MONGODB_URI=mongodb://localhost:27017/castfeed
 
 # JWT Secrets
 JWT_ACCESS_SECRET=your_access_token_secret_here
