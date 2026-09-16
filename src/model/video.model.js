@@ -29,17 +29,24 @@ const videoSchema = new Schema(
     },
     isPublished: {
       type: Boolean,
-      default: false,
+      default: true,
     },
     owner: {
       type: Schema.Types.ObjectId,
       ref: "User",
+      required: true,
+      index: true,
     },
   },
   {
     timestamps: true,
   },
 );
+
+videoSchema.index({
+  createdAt: -1,
+  _id: -1,
+});
 
 // Mongoose Model Aggregate Pipeline here
 export const Video = mongoose.model("Video", videoSchema);
