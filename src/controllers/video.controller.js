@@ -8,59 +8,207 @@ import mongoose from "mongoose";
 
 const getAllVideos = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query;
-  //TODO: get all videos based on query, sort, pagination
-  const user = await User.findById(userId);
-  // if (!user) {
-  //   throw new ApiError(404, "User not found");
-  // }
 
-  const videos = await Video.aggregate([
-    {
-      $lookup: {
-        from: "users",
-        localField: "owner",
-        foreignField: "_id",
-        as: "owner",
-      },
-    },
-    // {
-    //   $unwind: "$owner",
-    // },
-    {
-      $addFields: {
-        owner: {$first: "$owner"}
-      }
-    },
-    {
-      $project: {
-        title: 1,
-        description: 1,
-        videoFile: 1,
-        thumbnail: 1,
-        duration: 1,
-        views: 1,
-        owner: {
-          userName: 1,
-          fullName: 1,
-          avatar: 1,
+  const currentPage = Math.max(parseInt(page || 1), 1);
+  const requestedLimit = parseInt(limit || 10) || 10;
+  const perPage = Math.min(parseInt(requestedLimit || 50), 50);
+  const skip = (currentPage - 1) * perPage;
+
+  const matchStage = {
+    isPublished: true,
+  };
+
+  if (userId) {
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new ApiError(400, "Invalid user Id");
+    }
+
+    matchStage.owner = new mongoose.Types.ObjectId(userId);
+  }
+  if (query?.trim()) {
+    const searchQuery = query.trim();
+
+    matchStage.$or = [
+      {
+        title: {
+          $regex: searchQuery,
+          $options: "i",
         },
-        createdAt: 1,
+        description: {
+          $regex: searchQuery,
+          $options: "i",
+        },
       },
+    ];
+  }
+
+  const allowedSortFields = {
+    createdAt: "createdAt",
+    views: "views",
+    duration: "duration",
+    title: "title",
+  };
+
+  const sortField = allowedSortFields[sortBy] || "createdAt";
+
+  const sortDirection = sortType === "asc" ? 1 : -1;
+
+  const sortStage = {
+    [sortField]: sortDirection,
+    _id: -1,
+  };
+
+  const [result] = await Video.aggregate([
+    {
+      $match: matchStage,
     },
     {
-      $sort: {
-        createdAt: -1,
+      $facet: {
+        metaData: [{ $count: "totalVideos" }],
+        videos: [
+          {
+            $sort: sortStage,
+          },
+          {
+            $skip: skip,
+          },
+          {
+            $limit: perPage,
+          },
+          {
+            $lookup: {
+              from: "users",
+
+              let: {
+                ownerId: "$owner",
+              },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {$eq: ["$_id", "$$ownerId"]},
+                  },
+                },
+                {
+                  $project: {
+                    _id: 1,
+                    userName: 1,
+                    fullName: 1,
+                    avatar: 1,
+                  },
+                },
+              ],
+              as: "owner",
+            },
+          },
+          {
+            $unwind: {
+              path: "$owner",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+
+          {
+            $project: {
+              _id: 1,
+              videoFile: 1,
+              thumbnail: 1,
+              title: 1,
+              description: 1,
+              duration: 1,
+              views: 1,
+              isPublished: 1,
+              createdAt: 1,
+
+              owner: {
+                _id: "$owner._id",
+                userName: "$owner.userName",
+                fullName: "$owner.fullName",
+                avatar: "$owner.avatar",
+              },
+            },
+          },
+        ],
       },
     },
   ]);
 
-  if (!videos.length) {
-    return res.status(404).json(new ApiResponse(404, "Cannot find videos"));
-  }
+  const totalVideos = result.metaData[0]?.totalVideos || 0;
+  const totalPages = Math.ceil(totalVideos / perPage);
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, videos, "All videos fetched successfully"));
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        videos: result.videos,
+
+        pagination: {
+          currentPage,
+          perPage,
+          totalPages,
+          hasNextPage: currentPage < totalPages,
+          hasPreviousPage: currentPage > 1,
+        },
+      },
+      "all Videos fetched successfully",
+    ),
+  );
+
+  //TODO: get all videos based on query, sort, pagination
+  // const user = await User.findById(userId);
+  // // if (!user) {
+  // //   throw new ApiError(404, "User not found");
+  // // }
+  // const page = Math.max(Number(req.query.page) || 1);
+  // const limit = Math.min(Number(req.query.limit) || 10);
+
+  // const skip = (page - 1)* limit
+  // const videos = await Video.aggregate([
+  //   {
+  //     $lookup: {
+  //       from: "users",
+  //       localField: "owner",
+  //       foreignField: "_id",
+  //       as: "owner",
+  //     },
+  //   },
+  //   // {
+  //   //   $unwind: "$owner",
+  //   // },
+  //   {
+  //     $addFields: {
+  //       owner: {$first: "$owner"}
+  //     }
+  //   },
+  //   {
+  //     $project: {
+  //       title: 1,
+  //       description: 1,
+  //       videoFile: 1,
+  //       thumbnail: 1,
+  //       duration: 1,
+  //       views: 1,
+  //       owner: {
+  //         userName: 1,
+  //         fullName: 1,
+  //         avatar: 1,
+  //       },
+  //       createdAt: 1,
+  //     },
+  //   },
+  //   {
+  //     $sort: {
+  //       createdAt: -1,
+  //     },
+  //   },
+  // ]);
+
+  // if (!videos.length) {
+  //   return res.status(404).json(new ApiResponse(404, "Cannot find videos"));
+  // }
+
+  // return res
+  //   .status(200)
+  //   .json(new ApiResponse(200, videos, "All videos fetched successfully"));
 });
 
 const publishAVideo = asyncHandler(async (req, res) => {
