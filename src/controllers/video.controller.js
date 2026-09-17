@@ -263,7 +263,7 @@ const publishAVideo = asyncHandler(async (req, res) => {
 const getVideoById = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
   //TODO: get video by id
-
+  // Further improvement The user should get likes total and comments and if you have liked or not and etc and also subscribers.
   if (!videoId) {
     throw new ApiError(400, "Video is required");
   }
@@ -276,6 +276,18 @@ const getVideoById = asyncHandler(async (req, res) => {
   if (!video) {
     throw new ApiError(404, "Video not found");
   }
+
+  await Video.findByIdAndUpdate(videoId, {
+    $inc: {
+      views: 1,
+    },
+  });
+
+  await User.findByIdAndUpdate(req.user?._id, {
+    $addToSet: {
+      watchHistory: videoId,
+    },
+  });
 
   return res
     .status(200)
