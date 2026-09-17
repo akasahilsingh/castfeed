@@ -17,7 +17,7 @@ const generateAccessTokenAndRefreshToken = async (userId) => {
     return { accessToken, refreshToken };
   } catch (error) {
     // throw new ApiError(500, "Error while genrating access and refresh tokens")
-    console.log(error.message);
+    // console.log(error.message);
   }
 };
 
@@ -53,10 +53,10 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 
   const localAvatarPath = req.files?.avatar?.[0].path;
-  console.log("AvatarPath : ", localAvatarPath);
+  // console.log("AvatarPath : ", localAvatarPath);
 
   const localCoverImagePath = req.files?.coverImage?.[0].path;
-  console.log("localCoverImagepath: ", localCoverImagePath);
+  // console.log("localCoverImagepath: ", localCoverImagePath);
 
   if (!localAvatarPath) {
     throw new ApiError(400, "Avatar is required");
@@ -69,7 +69,7 @@ const registerUser = asyncHandler(async (req, res) => {
   }
 
   const coverImageOnCloudinary = await uploadOnCloudinary(localCoverImagePath);
-  console.log(coverImageOnCloudinary);
+  // console.log(coverImageOnCloudinary);
   const user = await User.create({
     userName: userName.toLowerCase(),
     email,
@@ -437,7 +437,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
     },
   ]);
 
-  console.log("Channel: ", channel);
+  // console.log("Channel: ", channel);
 
   if (!channel.length) {
     throw new ApiError(404, "No channel found");
@@ -488,7 +488,7 @@ const getWatchHistory = asyncHandler(async (req, res) => {
       },
     },
   ]);
-  console.log(user);
+  // console.log(user);
   if (!user.length) {
     throw new ApiError(404, "User not found");
   }
