@@ -1,6 +1,7 @@
 import express, { Router } from "express";
 import { verifyJwt } from "../middleware/auth.middleware.js";
 import {
+  deleteVideo,
   getAllVideos,
   getVideoById,
   publishAVideo,
@@ -27,7 +28,7 @@ router.route("/post-video").post(
 );
 
 router.route("/get-all-videos").get(getAllVideos);
-router.route("/:videoId").get(getVideoById);
-router.route("/:videoId").patch(upload.single("thumbnail"), updateVideo);
+router.route("/:videoId").get(getVideoById).patch(upload.single("thumbnail"), updateVideo).delete(deleteVideo);
+
 
 export default router;
