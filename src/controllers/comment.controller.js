@@ -79,6 +79,39 @@ const addComment = asyncHandler(async (req, res) => {
 
 const updateComment = asyncHandler(async (req, res) => {
   // TODO: update a comment
+  const { commentId } = req.params;
+  const { comment } = req.body;
+
+  if (!commentId) {
+    throw new ApiError(400, "Comment id is required");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(commentId)) {
+    throw new ApiError(400, "Not a valid comment id");
+  }
+
+  if (typeof comment !== "string" || !comment.trim()) {
+    throw new ApiError(400, "Type your comment to proceed");
+  }
+
+  const existingComment = await Comment.findOne({
+    _id: commentId,
+    owner: req.user?._id,
+  });
+
+  if (!existingComment) {
+    throw new ApiError(400, "Comment not found");
+  }
+
+  existingComment.content = comment.trim();
+
+  await existingComment.save();
+
+  return res
+    .status(201)
+    .json(
+      new ApiResponse(201, existingComment, "Comment updated successfully"),
+    );
 });
 
 const deleteComment = asyncHandler(async (req, res) => {

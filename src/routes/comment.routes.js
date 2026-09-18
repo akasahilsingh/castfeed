@@ -1,10 +1,20 @@
 import { Router } from "express";
-import { addComment, getVideoComments } from "../controllers/comment.controller.js";
+import {
+  addComment,
+  getVideoComments,
+  updateComment,
+} from "../controllers/comment.controller.js";
 import { verifyJwt } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-router.route("/get-comment").get(getVideoComments);
-router.route("/:videoId").post(verifyJwt, addComment)
+router
+  .route("/:videoId")
+  .post(verifyJwt, addComment)
+  .get(getVideoComments)
+
+router
+    .route("/c/:commentId")
+    .patch(verifyJwt, updateComment);
 
 export default router;
