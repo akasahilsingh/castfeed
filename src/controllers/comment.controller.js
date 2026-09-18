@@ -78,7 +78,6 @@ const addComment = asyncHandler(async (req, res) => {
 });
 
 const updateComment = asyncHandler(async (req, res) => {
-  // TODO: update a comment
   const { commentId } = req.params;
   const { comment } = req.body;
 
@@ -115,7 +114,30 @@ const updateComment = asyncHandler(async (req, res) => {
 });
 
 const deleteComment = asyncHandler(async (req, res) => {
-  // TODO: delete a comment
+  const { commentId } = req.params;
+
+  if (!commentId) {
+    throw new ApiError(400, "Comment id is required");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(commentId)) {
+    throw new ApiError(400, "Not a valid comment id");
+  }
+
+  const existingComment = await Comment.findOne({
+    _id: commentId,
+    owner: req.user?._id,
+  });
+
+  if (!existingComment) {
+    throw new ApiError(400, "Comment not found");
+  }
+
+  await existingComment.deleteOne();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Comment deleted Successfully"));
 });
 
 export { getVideoComments, addComment, updateComment, deleteComment };
