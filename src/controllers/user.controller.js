@@ -21,7 +21,7 @@ const generateAccessTokenAndRefreshToken = async (userId) => {
   }
 };
 
-const deleteImgOnCloudinary = async (publicId) => {
+export const deleteImgOnCloudinary = async (publicId) => {
   try {
     const res = await cloudinary.uploader.destroy(publicId);
 

@@ -5,6 +5,35 @@ import { Video } from "../model/video.model.js";
 import { User } from "../model/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import mongoose from "mongoose";
+import { deleteImgOnCloudinary } from "./user.controller.js";
+
+const extractCloudinaryPublicId = (url) => {
+  try {
+    const urlObject = new URL(url);
+
+    const pathParts = urlObject.pathname.split("/").filter(Boolean);
+
+    const uploadIndex = pathParts.indexOf("upload");
+
+    if (uploadIndex === -1) {
+      return null;
+    }
+
+    const publicIdParts = pathParts.slice(uploadIndex + 1);
+
+    // Remove version: v123456789
+    if (publicIdParts[0] && /^v\d+$/.test(publicIdParts[0])) {
+      publicIdParts.shift();
+    }
+
+    const publicIdWithExtension = publicIdParts.join("/");
+
+    // Remove file extension
+    return publicIdWithExtension.replace(/\.[^/.]+$/, "");
+  } catch {
+    return null;
+  }
+};
 
 const getAllVideos = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query;
@@ -387,6 +416,81 @@ const getVideoById = asyncHandler(async (req, res) => {
 const updateVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
   //TODO: update video details like title, description, thumbnail
+  const { title, description } = req.body;
+
+  if (!videoId) {
+    throw new ApiError(400, "Video id is required to continue");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(videoId)) {
+    throw new ApiError(400, "videoId is not valid");
+  }
+
+  if (!title === undefined && description === undefined && !req.file) {
+    throw new ApiError(400, "No video details provided fro update");
+  }
+
+  const video = await Video.findOne({ _id: videoId, owner: req.user?._id });
+
+  if (title !== undefined) {
+    if (typeof title !== "string" || !title.trim()) {
+      throw new ApiError(400, "Title cannot be empty");
+    }
+
+    video.title = title.trim();
+  }
+
+  if (description !== undefined) {
+    if (typeof description !== "string" || !description.trim()) {
+      throw new ApiError(400, "Description cannot be empty");
+    }
+    video.description = description.trim();
+  }
+
+  let oldThumbnail = video.thumbnail;
+  let newThumbnail = null;
+
+  if (req.file?.path) {
+    newThumbnail = await uploadOnCloudinary(req.file.path);
+
+    if (!newThumbnail?.secure_url) {
+      throw new ApiError(500, "Failed to upload thumbnail");
+    }
+    video.thumbnail = newThumbnail.secure_url;
+  }
+
+  try {
+    await video.save();
+  } catch (error) {
+    if (newThumbnail) {
+      try {
+        await deleteImgOnCloudinary(newThumbnail.public_id);
+      } catch (error) {
+        console.error("Failed to cleanup new thumbnail: ", error);
+      }
+    }
+    throw error;
+  }
+
+  if (newThumbnail && oldThumbnail) {
+    const oldPublicId = extractCloudinaryPublicId(oldThumbnail);
+    if (oldPublicId) {
+      try {
+        await deleteImgOnCloudinary(oldPublicId);
+      } catch (error) {
+        console.log("Failed to delete old thumbnail: ", error);
+      }
+    }
+  }
+
+  const updatedVideo = {
+    title: video.title,
+    description: video.description,
+    thumbnail: video.thumbnail,
+  };
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedVideo, "Updated Sucessfully"));
 });
 
 const deleteVideo = asyncHandler(async (req, res) => {
@@ -398,4 +502,4 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 });
 
-export { getAllVideos, publishAVideo, getVideoById };
+export { getAllVideos, publishAVideo, getVideoById, updateVideo };
