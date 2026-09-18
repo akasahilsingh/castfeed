@@ -182,7 +182,6 @@ const getAllVideos = asyncHandler(async (req, res) => {
     ),
   );
 
-  //TODO: get all videos based on query, sort, pagination
   // const user = await User.findById(userId);
   // // if (!user) {
   // //   throw new ApiError(404, "User not found");
@@ -305,6 +304,7 @@ const getVideoById = asyncHandler(async (req, res) => {
     {
       $match: {
         _id: new mongoose.Types.ObjectId(videoId),
+        isPublished: true,
       },
     },
     {
@@ -527,6 +527,40 @@ const deleteVideo = asyncHandler(async (req, res) => {
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
+  if (!videoId) {
+    throw new ApiError(400, "Video Id is required to continue");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(videoId)) {
+    throw new ApiError(400, "Not a valid video Id");
+  }
+
+  const video = await Video.findOne({ _id: videoId, owner: req.user?._id });
+
+  if (!video) {
+    throw new ApiError(404, "Video not found");
+  }
+
+  video.isPublished = !video.isPublished;
+
+  await video.save();
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { isPublished: video.isPublished },
+        ` Video ${video.isPublished ? "published" : "unpublished"} successfully`,
+      ),
+    );
 });
 
-export { getAllVideos, publishAVideo, getVideoById, updateVideo, deleteVideo };
+export {
+  getAllVideos,
+  publishAVideo,
+  getVideoById,
+  updateVideo,
+  deleteVideo,
+  togglePublishStatus,
+};
