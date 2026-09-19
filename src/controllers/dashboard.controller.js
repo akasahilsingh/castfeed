@@ -1,0 +1,62 @@
+import { asyncHandler } from "../utils/asyncHandler.js";
+import { ApiResponse } from "../utils/apiResponse.js";
+import { ApiError } from "../utils/apiError.js";
+import { User } from "../model/user.model.js";
+import { Video } from "../model/video.model.js";
+import mongoose from "mongoose";
+
+const getChannelStats = asyncHandler(async (req, res) => {
+  // TODO: Get the channel stats like total video views, total subscribers, total videos, total likes etc.
+});
+
+const getChannelVideos = asyncHandler(async (req, res) => {
+  const result = await Video.aggregate([
+    {
+      $match: {
+        owner: new mongoose.Types.ObjectId(req.user?._id),
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        foreignField: "_id",
+        localField: "owner",
+        as: "owner",
+        pipeline: [
+          {
+            $project: {
+              userName: 1,
+            },
+          },
+        ],
+      },
+    },
+    {
+      $addFields: {
+        owner: { $first: "$owner" },
+      },
+    },
+    {
+      $sort: {
+        createdAt: -1,
+        _id: -1,
+      },
+    },
+  ]);
+
+  if (!result.length) {
+    throw new ApiResponse(200, {}, "No videos uploaded by this channel");
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        result,
+        "Successfully fetched all videos of this channel",
+      ),
+    );
+});
+
+export { getChannelStats, getChannelVideos };
