@@ -7,13 +7,105 @@ import { Video } from "../model/video.model.js";
 import { User } from "../model/user.model.js";
 
 const getVideoComments = asyncHandler(async (req, res) => {
-  //TODO: get all comments for a video
   const { videoId } = req.params;
   const { page = 1, limit = 10 } = req.query;
+
+  if (!videoId) {
+    throw new ApiError(400, "Video id is required");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(videoId)) {
+    throw new ApiError(400, "Not a valid video id");
+  }
+
+  const currentPage = Math.max(parseInt(page || 1), 1);
+  const requestedLimit = Math.min(parseInt(limit || 10), 10);
+  const perPage = Math.min(parseInt(requestedLimit), 20);
+  const skip = (currentPage - 1) * perPage;
+
+  const [result] = await Comment.aggregate([
+    {
+      $match: {
+        video: new mongoose.Types.ObjectId(videoId),
+      },
+    },
+    {
+      $facet: {
+        metaData: [{ $count: "totalComments" }],
+        comments: [
+          {
+            $lookup: {
+              from: "users",
+              localField: "owner",
+              foreignField: "_id",
+              as: "owner",
+              pipeline: [
+                {
+                  $project: {
+                    userName: 1,
+                    avatar: 1,
+                  },
+                },
+              ],
+            },
+          },
+          {
+            $unwind: {
+              path: "$owner",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $sort: {
+              createdAt: -1,
+              _id: -1,
+            },
+          },
+          {
+            $skip: skip,
+          },
+          {
+            $limit: perPage,
+          },
+          {
+            $project: {
+              content: 1,
+              owner: 1,
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          },
+        ],
+      },
+    },
+  ]);
+
+  if (!result.comments.length) {
+    return res.status(200).json(new ApiResponse(200, {}, "No comments found"));
+  }
+
+  const totalComments = result.metaData[0]?.totalComments || 0;
+  const totalPages = Math.ceil(totalComments / perPage) || 1;
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        pagination: {
+          currentPage,
+          perPage,
+          totalPages,
+          hasNextPage: currentPage < totalPages,
+          hasPreviosPage: currentPage > 1,
+        },
+        comments: result.comments,
+      },
+      "Successfully fetched all comments",
+    ),
+  );
 });
 
 const addComment = asyncHandler(async (req, res) => {
-  // TODO: add a comment to a video
   const { videoId } = req.params;
   const { comment } = req.body;
 
@@ -43,34 +135,6 @@ const addComment = asyncHandler(async (req, res) => {
     video: video._id,
     owner: user._id,
   });
-
-  //   const comments = await Comment.aggregate([
-  //     {
-  //       $match: {
-  //         video: videoId,
-  //       },
-  //     },
-  //     {
-  //       $lookup: {
-  //         from: "Video",
-  //         localField: "video",
-  //         foreignField: "_id",
-  //         as: "comments",
-  //       },
-  //     },
-  //     {
-  //       $lookup: {
-  //         from: "User",
-  //         localField: "owner",
-  //         foreignField: "_id",
-  //         as: "owner",
-  //       },
-  //     },
-  //   ]);
-
-  //   if (!comments.length) {
-  //     throw new ApiError(404, "No comments found");
-  //   }
 
   return res
     .status(201)
