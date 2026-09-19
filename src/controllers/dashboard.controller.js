@@ -8,7 +8,7 @@ import { Subscription } from "../model/subscription.model.js";
 
 const getChannelStats = asyncHandler(async (req, res) => {
   // TODO: Get the channel stats like total video views, total subscribers, total videos, total likes etc.
-  const [result, totalSubscriber] = await Promise.all([
+  const [result, totalSubscribers] = await Promise.all([
     Video.aggregate([
       {
         $match: {
@@ -50,15 +50,15 @@ const getChannelStats = asyncHandler(async (req, res) => {
     Subscription.countDocuments({ channel: req.user?._id }),
   ]);
 
-  const totalVideos = result[0].videoStats[0]?.totalVideos || 0;
-  const totalViews = result[0].videoStats[0]?.totalViews || 0;
-  const totalLikes = result[0].likeStats[0]?.totalLikes || 0;
+  const totalVideos = result[0]?.videoStats[0]?.totalVideos || 0;
+  const totalViews = result[0]?.videoStats[0]?.totalViews || 0;
+  const totalLikes = result[0]?.likeStats[0]?.totalLikes || 0;
 
   const stats = {
     totalVideos,
     totalViews,
     totalLikes,
-    totalSubscriber,
+    totalSubscribers,
   };
 
   return res
