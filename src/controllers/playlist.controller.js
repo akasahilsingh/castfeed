@@ -209,18 +209,118 @@ const addVideoToPlaylist = asyncHandler(async (req, res) => {
 
 const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
   const { playlistId, videoId } = req.params;
-  // TODO: remove video from playlist
+  if (!playlistId || !videoId) {
+    throw new ApiError(400, "Playlist Id and video Id is required to continue");
+  }
+
+  if (
+    !mongoose.Types.ObjectId.isValid(playlistId) ||
+    !mongoose.Types.ObjectId.isValid(videoId)
+  ) {
+    throw new ApiError(400, "Invalid playlist id or video id");
+  }
+
+  const updatedPlaylist = await Playlist.findOneAndUpdate(
+    {
+      _id: playlistId,
+      owner: req.user?._id,
+      videos: videoId,
+    },
+    {
+      $pull: {
+        videos: videoId,
+      },
+    },
+    {
+      new: true,
+    },
+  );
+
+  if (!updatedPlaylist) {
+    throw new ApiError(404, "Playlist does not exist");
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        updatedPlaylist,
+        "Successfully removed video from playlist",
+      ),
+    );
 });
 
 const deletePlaylist = asyncHandler(async (req, res) => {
   const { playlistId } = req.params;
-  // TODO: delete playlist
+  if (!playlistId) {
+    throw new ApiError(400, "Playlist Id is required to continue");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(playlistId)) {
+    throw new ApiError(400, "Not a valid playlist id");
+  }
+
+  const playlist = await Playlist.findOne({
+    _id: playlistId,
+    owner: req.user?._id,
+  });
+
+  if (!playlist) {
+    throw new ApiError(404, "Playlist not found");
+  }
+
+  await playlist.deleteOne();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Successfully deleted the video"));
 });
 
 const updatePlaylist = asyncHandler(async (req, res) => {
   const { playlistId } = req.params;
   const { name, description } = req.body;
-  //TODO: update playlist
+  if (!playlistId) {
+    throw new ApiError(400, "Playlist Id is required to continue");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(playlistId)) {
+    throw new ApiError(400, "Not a valid playlist id");
+  }
+
+  if (name === undefined && description === undefined) {
+    throw new ApiError(400, "At least one field is required to update");
+  }
+
+  const playlist = await Playlist.findOne({
+    _id: playlistId,
+    owner: req.user?._id,
+  });
+
+  if (!playlist) {
+    throw new ApiError(404, "Playlist not found");
+  }
+  if (name !== undefined) {
+    if (typeof name !== "string" || !name.trim()) {
+      throw new ApiError(400, "Playlist name must be non empty string");
+    }
+
+    playlist.name = name.trim();
+  }
+
+  if (description !== undefined) {
+    if (typeof description !== "string" || !description.trim()) {
+      throw new ApiError(400, "Playlist description must be non empty string");
+    }
+
+    playlist.description = description.trim();
+  }
+
+  await playlist.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, playlist, "Playlist updated successfully"));
 });
 
 export {
