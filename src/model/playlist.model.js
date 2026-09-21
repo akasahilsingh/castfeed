@@ -21,9 +21,15 @@ const playListSchema = new Schema(
     owner: {
       type: Schema.Types.ObjectId,
       ref: "User",
+      required: true,
     },
   },
   { timestamps: true },
 );
+
+playListSchema.index({
+  owner: 1,
+  createdAt: -1,
+});
 
 export const Playlist = mongoose.model("Playlist", playListSchema);
