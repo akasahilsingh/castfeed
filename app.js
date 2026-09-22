@@ -24,6 +24,7 @@ import healthcheckRouter from "./src/routes/healthcheck.route.js";
 import likeRouter from "./src/routes/like.route.js";
 import playlistRouter from "./src/routes/playlist.route.js";
 import subscriptionRouter from "./src/routes/subscription.route.js";
+import tweetRouter from "./src/routes/tweet.route.js";
 app.use("/api/v1/users", userRouter);
 app.use("/api/v1/video", videoRouter);
 app.use("/api/v1/comment", commentRouter);
@@ -32,6 +33,7 @@ app.use("/api/v1/healthcheck", healthcheckRouter);
 app.use("/api/v1/likes", likeRouter);
 app.use("/api/v1/playlist", playlistRouter);
 app.use("/api/v1/subscription", subscriptionRouter);
+app.use("/api/v1/tweet", tweetRouter);
 
 app.use((error, req, res, next) => {
   const statusCode = error.statusCode || 500;
