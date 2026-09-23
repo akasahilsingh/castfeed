@@ -18,8 +18,11 @@
 - [Project Structure](#-project-structure)
 - [Data Models](#-data-models)
 - [API Reference](#-api-reference)
+- [API Response Format](#-api-response-format)
 - [Environment Variables](#-environment-variables)
 - [Getting Started](#-getting-started)
+- [Frontend Integration](#-frontend-integration)
+- [Roadmap](#-roadmap)
 
 ---
 
@@ -226,6 +229,14 @@ castfeed/
 | `isPublished` | Boolean | toggle-able by owner |
 | `owner` | ObjectId | ref to User, indexed |
 
+### Comment
+
+| Field | Type | Notes |
+|---|---|---|
+| `content` | String | required |
+| `video` | ObjectId | ref to Video |
+| `owner` | ObjectId | ref to User |
+
 ### Like
 
 | Field | Type | Notes |
@@ -241,6 +252,15 @@ castfeed/
 |---|---|---|
 | `subscriber` | ObjectId | the user who is subscribing |
 | `channel` | ObjectId | the user/channel being subscribed to |
+
+### Playlist *(In Progress)*
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | String | required |
+| `description` | String | optional |
+| `videos` | ObjectId[] | refs to Video |
+| `owner` | ObjectId | ref to User |
 
 ---
 
@@ -322,6 +342,39 @@ castfeed/
 
 ---
 
+## 📦 API Response Format
+
+All endpoints return a consistent JSON envelope:
+
+```json
+{
+  "statusCode": 200,
+  "data": { "..." },
+  "message": "Operation successful",
+  "success": true
+}
+```
+
+**Error responses** follow the same shape with `success: false`:
+
+```json
+{
+  "statusCode": 400,
+  "data": null,
+  "message": "All fields are required",
+  "success": false,
+  "errors": []
+}
+```
+
+**Authentication** is handled via HTTP-only cookies (`accessToken`, `refreshToken`). For non-browser clients, send the access token as:
+
+```
+Authorization: Bearer <accessToken>
+```
+
+---
+
 ## 🔐 Environment Variables
 
 Create a `.env` file in the project root:
@@ -372,6 +425,37 @@ npm start
 ```
 
 The server will start on `http://localhost:8000`.
+
+---
+
+## 🖥 Frontend Integration
+
+A dedicated frontend design context file is available at [`FRONTEND_CONTEXT.md`](./FRONTEND_CONTEXT.md). It contains:
+
+- Complete list of pages and their components
+- Exact API endpoints each component consumes
+- Data shapes returned by the backend
+- Auth flow and token handling strategy
+- Recommended UI states (loading, error, empty)
+
+This file is intended to be used directly with AI design tools like **Claude**, **v0**, or **Cursor** to scaffold a matching frontend.
+
+---
+
+## 🗺 Roadmap
+
+- [x] User auth (register, login, logout, refresh token)
+- [x] Video CRUD with Cloudinary media management
+- [x] Likes system (video, comment, tweet)
+- [x] Comments with pagination
+- [x] Channel subscriptions
+- [x] Channel profile & public stats
+- [x] Creator dashboard (stats + videos)
+- [ ] Playlist CRUD (in progress)
+- [ ] Tweet / community post feature
+- [ ] Search with full-text indexing
+- [ ] Notifications system
+- [ ] Frontend (React / Next.js)
 
 ---
 

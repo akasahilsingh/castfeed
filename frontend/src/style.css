@@ -1,0 +1,720 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────
+   Design tokens — light mode (spec § 2)
+   ───────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --bg: #FFFFFF;
+  --bg-tint: #F5F5F3;
+
+  /* Text */
+  --ink: #17171B;
+  --sub: #6B6B72;
+
+  /* Structure */
+  --line: #E7E7E3;
+  --accent: #3E4A72;
+  --danger: #A3372E;
+
+  /* Rotating thumbnail placeholder tones */
+  --thumb-1: #ECEAE7;
+  --thumb-2: #E9EBEC;
+  --thumb-3: #EDEDEA;
+  --thumb-4: #E4DEC8;
+  --thumb-5: #DEE3E1;
+  --thumb-6: #E4E3DA;
+}
+
+/* Dark mode override */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121214;
+    --bg-tint: #1B1B1E;
+    --ink: #F1F1EF;
+    --sub: #94949B;
+    --line: #2A2A2E;
+    --accent: #6B78A6;
+    --danger: #C4584F;
+    --thumb-1: #232326;
+    --thumb-2: #1F2325;
+    --thumb-3: #222224;
+    --thumb-4: #26251E;
+    --thumb-5: #1E2422;
+    --thumb-6: #232321;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   Reset & base
+   ───────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─────────────────────────────────────────────
+   Typography scale (spec § 2)
+   ───────────────────────────────────────────── */
+.t-featured {
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.t-title {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.t-section {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.t-row-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.t-body {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.t-meta {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.t-eyebrow {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* Color helpers */
+.c-ink {
+  color: var(--ink);
+}
+
+.c-sub {
+  color: var(--sub);
+}
+
+.c-accent {
+  color: var(--accent);
+}
+
+.c-danger {
+  color: var(--danger);
+}
+
+/* ─────────────────────────────────────────────
+   Layout shell
+   ───────────────────────────────────────────── */
+.page-wrap {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+@media (max-width: 600px) {
+  .page-wrap {
+    padding: 0 16px;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   Hairline divider (spec § 2 — 1px, --line)
+   ───────────────────────────────────────────── */
+.divider {
+  height: 1px;
+  background: var(--line);
+  border: none;
+}
+
+/* ─────────────────────────────────────────────
+   Buttons (spec § 4.2)
+   ───────────────────────────────────────────── */
+
+/* Outlined accent — the only button that uses accent as a color */
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 15px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.btn-outline:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.btn-outline:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Text button — no border, sub color */
+.btn-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--sub);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-text:hover {
+  color: var(--ink);
+}
+
+/* Solid ink — auth submit only (spec § 5 login/register) */
+.btn-solid {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 9px 15px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--bg);
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn-solid:hover {
+  opacity: 0.85;
+}
+
+.btn-solid:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-outline:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ─────────────────────────────────────────────
+   Square initials block (spec § 4.1 — no circular avatars)
+   ───────────────────────────────────────────── */
+.initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tint);
+  color: var(--sub);
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+  border-radius: 0;
+  line-height: 1;
+  overflow: hidden;
+}
+
+.initials img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ─────────────────────────────────────────────
+   Thumbnail placeholder (spec § 2 thumb tones)
+   ───────────────────────────────────────────── */
+.thumb-placeholder {
+  background: var(--thumb-1);
+  border-radius: 3px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.thumb-placeholder:nth-child(6n+2) {
+  background: var(--thumb-2);
+}
+
+.thumb-placeholder:nth-child(6n+3) {
+  background: var(--thumb-3);
+}
+
+.thumb-placeholder:nth-child(6n+4) {
+  background: var(--thumb-4);
+}
+
+.thumb-placeholder:nth-child(6n+5) {
+  background: var(--thumb-5);
+}
+
+.thumb-placeholder:nth-child(6n) {
+  background: var(--thumb-6);
+}
+
+/* ─────────────────────────────────────────────
+   Skeleton — flat bg-tint rect, NO shimmer (spec § 6)
+   ───────────────────────────────────────────── */
+.skeleton {
+  background: var(--bg-tint);
+  border-radius: 2px;
+}
+
+/* ─────────────────────────────────────────────
+   Stat block (spec § 4.5)
+   ───────────────────────────────────────────── */
+.stat-block {
+  background: var(--bg-tint);
+  border-radius: 3px;
+  padding: 14px 16px;
+}
+
+/* ─────────────────────────────────────────────
+   Forms (spec § 4.8)
+   ───────────────────────────────────────────── */
+.field-label {
+  display: block;
+  font-size: 12px;
+  color: var(--sub);
+  margin-bottom: 6px;
+}
+
+.field-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.field-input:focus {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.field-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  outline: none;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.15s;
+}
+
+.field-textarea:focus {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.field-error {
+  font-size: 12.5px;
+  color: var(--danger);
+  margin-top: 4px;
+}
+
+/* ─────────────────────────────────────────────
+   Dropzone (spec § 5 upload)
+   ───────────────────────────────────────────── */
+.dropzone {
+  border: 1px dashed var(--line);
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  color: var(--sub);
+  font-size: 13px;
+  text-align: center;
+}
+
+.dropzone:hover {
+  border-color: var(--accent);
+  background: var(--bg-tint);
+}
+
+/* ─────────────────────────────────────────────
+   Progress bar — thin 2px accent fill
+   ───────────────────────────────────────────── */
+.progress-bar-track {
+  height: 2px;
+  background: var(--line);
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s linear;
+}
+
+/* Pulsing opacity for the "server is processing" phase */
+@keyframes progress-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   Nav tabs (plain text, 2px underline accent)
+   ───────────────────────────────────────────── */
+.tab-list {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab-item {
+  padding: 0 0 10px;
+  font-size: 13px;
+  color: var(--sub);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: inherit;
+}
+
+.tab-item.active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+/* ─────────────────────────────────────────────
+   Featured + index list (spec § 4.3)
+   ───────────────────────────────────────────── */
+.video-list {}
+
+.video-featured {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+@media (max-width: 680px) {
+  .video-featured {
+    grid-template-columns: 1fr;
+  }
+}
+
+.video-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: inherit;
+}
+
+.video-row:hover .video-row-title {
+  color: var(--accent);
+}
+
+.video-row-thumb {
+  width: 88px;
+  height: 52px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: var(--thumb-1);
+}
+
+/* ─────────────────────────────────────────────
+   Comment input — underline style
+   ───────────────────────────────────────────── */
+.comment-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 6px 0;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: transparent;
+  outline: none;
+  resize: none;
+}
+
+.comment-input:focus {
+  border-bottom-color: var(--accent);
+}
+
+/* ─────────────────────────────────────────────
+   Data table (spec § 4.6)
+   ───────────────────────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--sub);
+  text-align: left;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.data-table td {
+  padding: 10px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.data-table td:first-child {
+  padding-right: 12px;
+}
+
+/* ─────────────────────────────────────────────
+   Settings left-tab list (spec § 5 settings)
+   ───────────────────────────────────────────── */
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.settings-nav-item {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--sub);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  background: none;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  font-family: inherit;
+  text-align: left;
+}
+
+.settings-nav-item.active {
+  color: var(--ink);
+  border-left-color: var(--accent);
+}
+
+/* ─────────────────────────────────────────────
+   Utility
+   ───────────────────────────────────────────── */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  cursor: pointer;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 32px;
+}
+
+@media (max-width: 860px) {
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   Video card grid (home page)
+   ───────────────────────────────────────────── */
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px 16px;
+}
+
+@media (max-width: 600px) {
+  .video-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 14px 10px;
+  }
+}
+
+.video-card {
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  outline: none;
+}
+
+.video-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+.video-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 16:9 thumbnail wrapper */
+.video-card-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-tint);
+  flex-shrink: 0;
+}
+
+.video-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.22s ease;
+}
+
+.video-card:hover .video-card-thumb img {
+  transform: scale(1.03);
+}
+
+/* Duration badge */
+.video-card-duration {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+/* Card text area */
+.video-card-body {
+  padding: 10px 4px 6px;
+}
+
+.video-card-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ink);
+  margin-bottom: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.video-card-channel {
+  display: block;
+  font-size: 12px;
+  color: var(--sub);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.15s;
+}
+
+.video-card-channel:hover {
+  color: var(--ink);
+}
+
+.video-card-meta {
+  font-size: 11.5px;
+  color: var(--sub);
+  line-height: 1.4;
+}
+
+/* Grid skeleton cards */
+.video-card-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
