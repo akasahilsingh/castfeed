@@ -12,11 +12,13 @@
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "bullmq": "^6.3.8",
     "cloudinary": "^2.10.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.3",
     "multer": "^2.2.0"

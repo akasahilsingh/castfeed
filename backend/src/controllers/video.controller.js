@@ -6,6 +6,7 @@ import { User } from "../model/user.model.js";
 import { uploadOnCloudinary, cloudinary } from "../utils/cloudinary.js";
 import mongoose from "mongoose";
 import { deleteImgOnCloudinary } from "./user.controller.js";
+import { videoQueue } from "../queues/video.queue.js";
 
 const extractCloudinaryPublicId = (url) => {
   try {
@@ -561,40 +562,40 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
     );
 });
 
-const generateUploadSignature = asyncHandler(async (req, res) => {
-  const userId = req.user?._id;
+// const generateUploadSignature = asyncHandler(async (req, res) => {
+//   const userId = req.user?._id;
 
-  if (!userId) {
-    throw new ApiError(401, "Unauthorized request");
-  }
+//   if (!userId) {
+//     throw new ApiError(401, "Unauthorized request");
+//   }
 
-  const timestamp = Math.floor(Date.now() / 1000);
+//   const timestamp = Math.floor(Date.now() / 1000);
 
-  // Everything included here will be signed by your backend.
-  const paramsToSign = {
-    timestamp,
-    folder: `videos/${userId}`,
-  };
+//   // Everything included here will be signed by your backend.
+//   const paramsToSign = {
+//     timestamp,
+//     folder: `videos/${userId}`,
+//   };
 
-  const signature = cloudinary.utils.api_sign_request(
-    paramsToSign,
-    process.env.CLOUDINARY_SECRET_KEY,
-  );
+//   const signature = cloudinary.utils.api_sign_request(
+//     paramsToSign,
+//     process.env.CLOUDINARY_SECRET_KEY,
+//   );
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        signature,
-        timestamp,
-        cloudName: process.env.CLOUDINARY_NAME,
-        apiKey: process.env.CLOUDINARY_API_KEY,
-        folder: paramsToSign.folder,
-      },
-      "Upload authorization generated successfully",
-    ),
-  );
-});
+//   return res.status(200).json(
+//     new ApiResponse(
+//       200,
+//       {
+//         signature,
+//         timestamp,
+//         cloudName: process.env.CLOUDINARY_NAME,
+//         apiKey: process.env.CLOUDINARY_API_KEY,
+//         folder: paramsToSign.folder,
+//       },
+//       "Upload authorization generated successfully",
+//     ),
+//   );
+// });
 
 const completeVideoUpload = asyncHandler(async (req, res) => {
   const userId = req.user?._id;
@@ -603,43 +604,187 @@ const completeVideoUpload = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Unauthorized request");
   }
 
-  const { publicId, secureUrl, duration, title, description } = req.body;
+  const { videoId, publicId, secureUrl, duration } = req.body;
+
+  if (!videoId) {
+    throw new ApiError(400, "Video ID is required");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(videoId)) {
+    throw new ApiError(400, "Invalid video ID");
+  }
 
   if (!publicId || !secureUrl) {
     throw new ApiError(400, "Cloudinary upload information is required");
   }
 
+  /*
+   * Find the video AND verify ownership.
+   *
+   * This prevents User A from completing User B's upload.
+   */
+  const video = await Video.findOne({
+    _id: videoId,
+    owner: userId,
+  });
+
+  if (!video) {
+    throw new ApiError(404, "Video not found");
+  }
+
+  /*
+   * The upload should only be completed once.
+   */
+  if (video.processingStatus !== "UPLOADING") {
+    throw new ApiError(
+      409,
+      `Video upload cannot be completed from ${video.processingStatus} state`,
+    );
+  }
+
+  /*
+   * This is the Cloudinary location generated
+   * during /upload-init.
+   *
+   * Example:
+   *
+   * videos/
+   *   6aa6f24.../
+   *   6ab3b39.../
+   */
+  const expectedPublicId = `videos/${userId}/${videoId}`;
+
+  /*
+   * Cloudinary's public_id should exactly match
+   * the identity we created during upload-init.
+   */
+  if (publicId !== expectedPublicId) {
+    throw new ApiError(400, "Cloudinary asset does not belong to this video");
+  }
+
+  /*
+   * Save the Cloudinary information.
+   */
+  video.videoFile = secureUrl;
+  video.cloudinaryPublicId = publicId;
+  video.duration = Number(duration) || null;
+
+  /*
+   * The upload is finished.
+   * Now background processing needs to happen.
+   */
+  video.processingStatus = "PROCESSING";
+
+  await video.save();
+
+    /*
+   * Put the processing task into BullMQ.
+   *
+   * Send only the videoId.
+   * The worker can fetch the actual video
+   * information from MongoDB.
+   */
+
+  const job = await videoQueue.add("process-video", {
+    videoId: video._id.toString(),
+  });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        videoId: video._id,
+        processingStatus: video.processingStatus,
+        jobId: job.id,
+      },
+      "Video upload completed successfully. Processing started.",
+    ),
+  );
+});
+
+const uploadInit = asyncHandler(async (req, res) => {
+  const userId = req.user?._id;
+
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized request");
+  }
+
+  const { title, description } = req.body;
+
   if (!title?.trim()) {
-    throw new ApiError(400, "Title is required to publish a video");
+    throw new ApiError(400, "Title is required");
   }
 
   const video = await Video.create({
-    videoFile: secureUrl,
     title: title.trim(),
-    ...(description?.trim() ? { description: description.trim() } : {}),
-    duration: duration || null,
+    description: description?.trim() || "",
     owner: userId,
 
-    cloudinaryPublicId: publicId,
+    videoFile: null,
+    thumbnail: null,
+    duration: null,
 
-    processingStatus: "PROCESSING",
+    processingStatus: "UPLOADING",
+    processingError: null,
 
     isPublished: false,
   });
 
-  // Add BullMQ here later.
-  // await videoQueue.add("process-video", {
-  //   videoId: video._id.toString(),
-  // });
+  const videoId = video._id.toString();
+
+  /*
+   * Every video gets its own Cloudinary location.
+   *
+   * Example:
+   *
+   * videos/
+   *   123456/
+   *     68c9abc123/
+   *
+   * userId      = 123456
+   * videoId     = 68c9abc123
+   */
+  const folder = `videos/${userId}/${videoId}`;
+
+  /*
+   * Using the videoId as the Cloudinary public_id.
+   *
+   * Therefore the final Cloudinary asset becomes:
+   *
+   * videos/USER_ID/VIDEO_ID
+   */
+  const publicId = videoId;
+
+  const timestamp = Math.floor(Date.now() / 1000);
+
+  const paramsToSign = {
+    timestamp,
+    folder,
+    public_id: publicId,
+  };
+
+  const signature = cloudinary.utils.api_sign_request(
+    paramsToSign,
+    process.env.CLOUDINARY_SECRET_KEY,
+  );
 
   return res.status(201).json(
     new ApiResponse(
       201,
       {
-        videoId: video._id,
+        videoId,
+        cloudName: process.env.CLOUDINARY_NAME,
+        apiKey: process.env.CLOUDINARY_API_KEY,
+
+        timestamp,
+        signature,
+
+        folder,
+        publicId,
+
         processingStatus: video.processingStatus,
       },
-      "Video uploaded successfully. Processing started.",
+      "Video upload initialized successfully",
     ),
   );
 });
@@ -651,6 +796,7 @@ export {
   updateVideo,
   deleteVideo,
   togglePublishStatus,
-  generateUploadSignature,
+  // generateUploadSignature,
   completeVideoUpload,
+  uploadInit,
 };

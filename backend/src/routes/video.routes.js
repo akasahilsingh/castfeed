@@ -3,12 +3,13 @@ import { verifyJwt, verifyJwtOptional } from "../middleware/auth.middleware.js";
 import {
   completeVideoUpload,
   deleteVideo,
-  generateUploadSignature,
+  // generateUploadSignature,
   getAllVideos,
   getVideoById,
-  publishAVideo,
+  // publishAVideo,
   togglePublishStatus,
   updateVideo,
+  uploadInit,
 } from "../controllers/video.controller.js";
 import { upload } from "../middleware/multer.middleware.js";
 
@@ -29,7 +30,8 @@ const router = Router();
 //   publishAVideo,
 // );
 
-router.post("/upload-signature", verifyJwt, generateUploadSignature);
+// router.post("/upload-signature", verifyJwt, generateUploadSignature);
+router.route("/upload-init").post(verifyJwt, uploadInit);
 
 router.post("/upload-complete", verifyJwt, completeVideoUpload);
 

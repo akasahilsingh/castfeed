@@ -1,6 +1,7 @@
 import "dotenv/config";
 import app from "./app.js";
 import connectDB from "./src/db/db.js";
+import { redisConnection } from "./src/utils/redis.js";
 const port = process.env.PORT || 8000;
 
 const startServer = async () => {
@@ -14,6 +15,5 @@ const startServer = async () => {
     process.exit(1);
   }
 };
-
 
 startServer();
