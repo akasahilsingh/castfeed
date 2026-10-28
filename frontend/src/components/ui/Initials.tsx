@@ -8,6 +8,7 @@ interface Props {
 
 /** Square (not circular) initials block — spec § 4.1 */
 export default function Initials({ name, src, size = 32 }: Props) {
+  // console.log("Initials src:", src);
   return (
     <span
       className="initials"

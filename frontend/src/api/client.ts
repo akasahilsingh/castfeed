@@ -1,36 +1,145 @@
-import axios from "axios";
+import axios, {
+  AxiosError,
+  InternalAxiosRequestConfig,
+} from "axios";
+import { useAuthStore } from "../store/authStore";
+
+interface RetryableRequestConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
 
 const api = axios.create({
   baseURL: "/api/v1",
   withCredentials: true,
 });
 
-// Auth endpoints that must NEVER trigger the refresh-redirect loop
-const AUTH_URLS = ["/users/login", "/users/logout", "/users/refresh-token", "/users/register", "/users/current-user"];
+// Separate Axios instance.
+// IMPORTANT: refresh requests must not go through the interceptor below.
+const refreshClient = axios.create({
+  baseURL: "/api/v1",
+  withCredentials: true,
+});
 
-// Intercept 401 → silently refresh token → retry once
-// SKIP for auth endpoints — a wrong-password 401 must reach the caller as a normal error
-api.interceptors.response.use(
-  (res) => res,
-  async (error) => {
-    const original = error.config;
-    const url: string = original?.url ?? "";
-    const isAuthEndpoint = AUTH_URLS.some((u) => url.includes(u));
+const AUTH_URLS = [
+  "/users/login",
+  "/users/logout",
+  "/users/refresh-token",
+  "/users/register",
+];
 
-    if (error.response?.status === 401 && !original._retry && !isAuthEndpoint) {
-      original._retry = true;
-      try {
-        await axios.post("/api/v1/users/refresh-token", {}, { withCredentials: true });
-        return api(original);
-      } catch {
-        // Refresh also failed — send to login only if not already there
-        if (!window.location.pathname.startsWith("/login")) {
-          window.location.href = "/login";
-        }
-      }
-    }
-    return Promise.reject(error);
+let isRefreshing = false;
+
+let refreshSubscribers: Array<{
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}> = [];
+
+const subscribeToRefresh = (
+  resolve: () => void,
+  reject: (error: unknown) => void,
+) => {
+  refreshSubscribers.push({ resolve, reject });
+};
+
+const notifyRefreshSuccess = () => {
+  refreshSubscribers.forEach(({ resolve }) => resolve());
+  refreshSubscribers = [];
+};
+
+const notifyRefreshFailure = (error: unknown) => {
+  refreshSubscribers.forEach(({ reject }) => reject(error));
+  refreshSubscribers = [];
+};
+
+const logoutAndRedirect = () => {
+  useAuthStore.getState().clearUser();
+
+  if (!window.location.pathname.startsWith("/login")) {
+    window.location.href = "/login";
   }
+};
+
+api.interceptors.response.use(
+  (response) => response,
+
+  async (error: AxiosError) => {
+    const originalRequest =
+      error.config as RetryableRequestConfig | undefined;
+
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+
+    const url = originalRequest.url ?? "";
+
+    const isAuthEndpoint = AUTH_URLS.some((authUrl) =>
+      url.includes(authUrl),
+    );
+
+    /*
+     * Only attempt refresh for:
+     * 401 responses
+     * non-auth endpoints
+     * requests that haven't already been retried
+     */
+    if (
+      error.response?.status !== 401 ||
+      originalRequest._retry ||
+      isAuthEndpoint
+    ) {
+      return Promise.reject(error);
+    }
+
+    originalRequest._retry = true;
+
+    /*
+     * Another request is already refreshing the token.
+     *
+     * Don't start another refresh request.
+     * Wait for the existing refresh to finish.
+     */
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        subscribeToRefresh(
+          () => {
+            resolve(api(originalRequest));
+          },
+          (refreshError) => {
+            reject(refreshError);
+          },
+        );
+      });
+    }
+
+    /*
+     * This request becomes responsible for refreshing
+     * the access token.
+     */
+    isRefreshing = true;
+
+    try {
+      await refreshClient.post("/users/refresh-token");
+
+      /*
+       * Backend has now set the new accessToken
+       * and refreshToken cookies.
+       */
+      notifyRefreshSuccess();
+
+      /*
+       * Retry the original request.
+       */
+      return api(originalRequest);
+    } catch (refreshError) {
+      notifyRefreshFailure(refreshError);
+
+      logoutAndRedirect();
+
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
+  },
 );
 
 export default api;

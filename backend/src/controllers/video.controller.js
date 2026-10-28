@@ -7,6 +7,7 @@ import { uploadOnCloudinary, cloudinary } from "../utils/cloudinary.js";
 import mongoose from "mongoose";
 import { deleteImgOnCloudinary } from "./user.controller.js";
 import { videoQueue } from "../queues/video.queue.js";
+import { redisConnection } from "../utils/redis.js";
 
 const extractCloudinaryPublicId = (url) => {
   try {
@@ -46,6 +47,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
   const matchStage = {
     isPublished: true,
+    processingStatus: "READY",
   };
 
   if (userId) {
@@ -64,6 +66,8 @@ const getAllVideos = asyncHandler(async (req, res) => {
           $regex: searchQuery,
           $options: "i",
         },
+      },
+      {
         description: {
           $regex: searchQuery,
           $options: "i",
@@ -307,6 +311,7 @@ const getVideoById = asyncHandler(async (req, res) => {
       $match: {
         _id: new mongoose.Types.ObjectId(videoId),
         isPublished: true,
+        processingStatus: "READY",
       },
     },
     {
@@ -400,11 +405,11 @@ const getVideoById = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Video not found");
   }
 
-  await Video.findByIdAndUpdate(videoId, {
-    $inc: {
-      views: 1,
-    },
-  });
+  // await Video.findByIdAndUpdate(videoId, {
+  //   $inc: {
+  //     views: 1,
+  //   },
+  // });
 
   if (req.user?._id) {
     await User.findByIdAndUpdate(req.user._id, {
@@ -498,6 +503,7 @@ const updateVideo = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, updatedVideo, "Updated Sucessfully"));
 });
 
+
 const deleteVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
   if (!videoId) {
@@ -514,13 +520,25 @@ const deleteVideo = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Video not found");
   }
 
+  // Delete the video asset from Cloudinary (resource_type must be "video")
   const videoPublicId = extractCloudinaryPublicId(video.videoFile);
   if (videoPublicId) {
     try {
-      await deleteImgOnCloudinary(videoPublicId);
+      await deleteImgOnCloudinary(videoPublicId, "video");
     } catch (error) {
-      console.error("Failed to delete video from cloudinary: ", error);
-      throw error;
+      console.error("Failed to delete video from Cloudinary: ", error);
+      // Non-fatal: still delete the DB record
+    }
+  }
+
+  // Delete the thumbnail image from Cloudinary
+  const thumbPublicId = extractCloudinaryPublicId(video.thumbnail);
+  if (thumbPublicId) {
+    try {
+      await deleteImgOnCloudinary(thumbPublicId, "image");
+    } catch (error) {
+      console.error("Failed to delete thumbnail from Cloudinary: ", error);
+      // Non-fatal: still delete the DB record
     }
   }
 
@@ -530,6 +548,7 @@ const deleteVideo = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, {}, "Successfully deleted video"));
 });
+
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
@@ -545,6 +564,17 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
 
   if (!video) {
     throw new ApiError(404, "Video not found");
+  }
+
+  // video.isPublished = !video.isPublished;
+
+  // await video.save();
+
+  if (!video.isPublished && video.processingStatus !== "READY") {
+    throw new ApiError(
+      409,
+      "Video cannot be published until processing is complete",
+    );
   }
 
   video.isPublished = !video.isPublished;
@@ -604,7 +634,7 @@ const completeVideoUpload = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Unauthorized request");
   }
 
-  const { videoId, publicId, secureUrl, duration } = req.body;
+  const { videoId, publicId, secureUrl, duration, thumbnailUrl } = req.body;
 
   if (!videoId) {
     throw new ApiError(400, "Video ID is required");
@@ -618,11 +648,6 @@ const completeVideoUpload = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Cloudinary upload information is required");
   }
 
-  /*
-   * Find the video AND verify ownership.
-   *
-   * This prevents User A from completing User B's upload.
-   */
   const video = await Video.findOne({
     _id: videoId,
     owner: userId,
@@ -632,9 +657,6 @@ const completeVideoUpload = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Video not found");
   }
 
-  /*
-   * The upload should only be completed once.
-   */
   if (video.processingStatus !== "UPLOADING") {
     throw new ApiError(
       409,
@@ -642,66 +664,57 @@ const completeVideoUpload = asyncHandler(async (req, res) => {
     );
   }
 
-  /*
-   * This is the Cloudinary location generated
-   * during /upload-init.
-   *
-   * Example:
-   *
-   * videos/
-   *   6aa6f24.../
-   *   6ab3b39.../
-   */
   const expectedPublicId = `videos/${userId}/${videoId}`;
 
-  /*
-   * Cloudinary's public_id should exactly match
-   * the identity we created during upload-init.
-   */
   if (publicId !== expectedPublicId) {
     throw new ApiError(400, "Cloudinary asset does not belong to this video");
   }
 
-  /*
-   * Save the Cloudinary information.
-   */
+  // Save uploaded Cloudinary information
   video.videoFile = secureUrl;
   video.cloudinaryPublicId = publicId;
   video.duration = Number(duration) || null;
-
-  /*
-   * The upload is finished.
-   * Now background processing needs to happen.
-   */
   video.processingStatus = "PROCESSING";
+  video.processingError = null;
+  // Save thumbnail if provided
+  if (thumbnailUrl) {
+    video.thumbnail = thumbnailUrl;
+  }
 
   await video.save();
 
-    /*
-   * Put the processing task into BullMQ.
-   *
-   * Send only the videoId.
-   * The worker can fetch the actual video
-   * information from MongoDB.
-   */
+  try {
+    const job = await videoQueue.add("process-video", {
+      videoId: video._id.toString(),
+    });
 
-  const job = await videoQueue.add("process-video", {
-    videoId: video._id.toString(),
-  });
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          videoId: video._id,
+          processingStatus: video.processingStatus,
+          jobId: job.id,
+        },
+        "Video upload completed successfully. Processing started.",
+      ),
+    );
+  } catch (error) {
+    console.error("Failed to queue video processing job:", error.message);
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        videoId: video._id,
-        processingStatus: video.processingStatus,
-        jobId: job.id,
-      },
-      "Video upload completed successfully. Processing started.",
-    ),
-  );
+    // Queue failed, so don't leave the video stuck in PROCESSING
+    video.processingStatus = "UPLOADING";
+    video.processingError =
+      "Failed to start video processing. Please try again.";
+
+    await video.save();
+
+    throw new ApiError(
+      503,
+      "Video processing could not be started. Please try again.",
+    );
+  }
 });
-
 const uploadInit = asyncHandler(async (req, res) => {
   const userId = req.user?._id;
 
@@ -744,7 +757,7 @@ const uploadInit = asyncHandler(async (req, res) => {
    * userId      = 123456
    * videoId     = 68c9abc123
    */
-  const folder = `videos/${userId}/${videoId}`;
+  const folder = `videos/${userId}`;
 
   /*
    * Using the videoId as the Cloudinary public_id.
@@ -768,6 +781,20 @@ const uploadInit = asyncHandler(async (req, res) => {
     process.env.CLOUDINARY_SECRET_KEY,
   );
 
+  // Sign a thumbnail upload too (image, different folder/public_id)
+  const thumbFolder = `thumbnails/${userId}`;
+  const thumbPublicId = `${videoId}_thumb`;
+  const thumbTimestamp = Math.floor(Date.now() / 1000);
+  const thumbParamsToSign = {
+    timestamp: thumbTimestamp,
+    folder: thumbFolder,
+    public_id: thumbPublicId,
+  };
+  const thumbSignature = cloudinary.utils.api_sign_request(
+    thumbParamsToSign,
+    process.env.CLOUDINARY_SECRET_KEY,
+  );
+
   return res.status(201).json(
     new ApiResponse(
       201,
@@ -782,12 +809,210 @@ const uploadInit = asyncHandler(async (req, res) => {
         folder,
         publicId,
 
+        // Thumbnail upload params
+        thumbTimestamp,
+        thumbSignature,
+        thumbFolder,
+        thumbPublicId,
+
         processingStatus: video.processingStatus,
       },
       "Video upload initialized successfully",
     ),
   );
 });
+
+const uploadFailed = asyncHandler(async (req, res) => {
+  const userId = req.user?._id;
+
+  if (!userId) {
+    throw new ApiError(401, "Unauthorized request");
+  }
+
+  const { videoId, errorMessage } = req.body;
+
+  if (!videoId) {
+    throw new ApiError(400, "Video ID is required");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(videoId)) {
+    throw new ApiError(400, "Invalid video ID");
+  }
+
+  const video = await Video.findOne({
+    _id: videoId,
+    owner: userId,
+  });
+
+  if (!video) {
+    throw new ApiError(404, "Video not found");
+  }
+
+  /*
+   * Only an upload that is still in the UPLOADING
+   * state can be marked as failed here.
+   */
+  if (video.processingStatus !== "UPLOADING") {
+    throw new ApiError(
+      409,
+      `Video cannot be marked as upload failed from ${video.processingStatus} state`,
+    );
+  }
+
+  const processingError =
+    errorMessage?.trim() || "Video upload failed";
+
+  /*
+   * If Cloudinary upload actually succeeded but
+   * upload-complete failed, remove the Cloudinary asset.
+   */
+  if (video.cloudinaryPublicId) {
+    try {
+      await cloudinary.uploader.destroy(video.cloudinaryPublicId, {
+        resource_type: "video",
+        type: "upload",
+      });
+
+      console.log(
+        `Deleted Cloudinary asset: ${video.cloudinaryPublicId}`,
+      );
+    } catch (cloudinaryError) {
+      /*
+       * Do not prevent the database from being marked
+       * FAILED just because Cloudinary cleanup failed.
+       */
+      console.error(
+        "Failed to delete Cloudinary asset:",
+        cloudinaryError.message,
+      );
+    }
+  }
+
+  video.processingStatus = "FAILED";
+  video.processingError = processingError;
+  video.isPublished = false;
+
+  await video.save();
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        videoId: video._id,
+        processingStatus: video.processingStatus,
+        processingError: video.processingError,
+      },
+      "Video upload marked as failed",
+    ),
+  );
+});
+
+const recordVideoView = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+  const viewerId = req.user?._id;
+
+  if (!viewerId) {
+    throw new ApiError(401, "Unauthorized request");
+  }
+
+  if (!videoId) {
+    throw new ApiError(400, "Video ID is required");
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(videoId)) {
+    throw new ApiError(400, "Invalid video ID");
+  }
+
+  /*
+   * Only published and completely processed videos
+   * can receive views.
+   */
+  const video = await Video.findOne({
+    _id: videoId,
+    isPublished: true,
+    processingStatus: "READY",
+  }).select("_id views");
+
+  if (!video) {
+    throw new ApiError(404, "Video not found");
+  }
+
+  /*
+   * Redis key:
+   *
+   * video:view:<videoId>:<viewerId>
+   *
+   * Example:
+   * video:view:6ab3f6973b515f4a0ef53f65:6aa6f24a14cd780a2b38d450
+   */
+  const viewKey = `video:view:${videoId}:${viewerId}`;
+
+  const newView = await redisConnection.set(
+    viewKey,
+    "1",
+    "EX",
+    60 * 60,
+    "NX",
+  );
+
+  /*
+   * User has already generated a view
+   * for this video during the cooldown period.
+   */
+  if (!newView) {
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          counted: false,
+          views: video.views,
+        },
+        "View already counted recently",
+      ),
+    );
+  }
+
+  /*
+   * Atomically increment the video view counter.
+   */
+  const updatedVideo = await Video.findByIdAndUpdate(
+    videoId,
+    {
+      $inc: {
+        views: 1,
+      },
+    },
+    {
+      new: true,
+      projection: {
+        views: 1,
+      },
+    },
+  );
+
+  /*
+   * If MongoDB update unexpectedly fails after Redis
+   * accepted the view, remove the Redis key so the
+   * request can be retried.
+   */
+  if (!updatedVideo) {
+    await redisConnection.del(viewKey);
+
+    throw new ApiError(404, "Video not found");
+  }
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        counted: true,
+        views: updatedVideo.views,
+      },
+      "Video view recorded successfully",
+    ),
+  );
+});
+
 
 export {
   getAllVideos,
@@ -799,4 +1024,6 @@ export {
   // generateUploadSignature,
   completeVideoUpload,
   uploadInit,
+  uploadFailed,
+  recordVideoView
 };

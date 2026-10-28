@@ -12,6 +12,10 @@ const videoSchema = new Schema(
       // required: true,
       default: null,
     },
+    thumbnailPublicId: {
+      type: String,
+      default: null,
+    },
     title: {
       type: String,
       required: true,
@@ -36,7 +40,7 @@ const videoSchema = new Schema(
     },
     processingStatus: {
       type: String,
-      enum: ["UPLOADING", "PROCESSING", "READY", "FAILED"],
+      enum: ["UPLOADING", "PROCESSING", "READY", "FAILED", "CLEANING"],
       default: "UPLOADING",
       index: true,
     },

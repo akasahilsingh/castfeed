@@ -1,6 +1,6 @@
 # 🎬 CastFeed
 
-> A full-featured video sharing & social platform backend — built with Node.js, Express, MongoDB, and Cloudinary.
+> A full-featured video sharing & social platform built with React, Node.js, Express, MongoDB, Cloudinary, Redis, and BullMQ.
 
 [![Node.js](https://img.shields.io/badge/Node.js-22.x-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com/)
@@ -15,6 +15,7 @@
 - [About the Project](#-about-the-project)
 - [Tech Stack](#-tech-stack)
 - [Architecture Overview](#-architecture-overview)
+- [Background Video Processing](#-background-video-processing)
 - [Project Structure](#-project-structure)
 - [Data Models](#-data-models)
 - [API Reference](#-api-reference)
@@ -38,6 +39,8 @@
 | JWT Auth (Access + Refresh Tokens) | ✅ Complete |
 | Avatar & Cover Image Upload | ✅ Complete |
 | Video Upload & Management | ✅ Complete |
+| Background Video Processing | ✅ Complete |
+| Stale Upload Cleanup | ✅ Complete |
 | View Count & Watch History | ✅ Complete |
 | Like / Unlike (Video, Comment, Tweet) | ✅ Complete |
 | Comments (CRUD) | ✅ Complete |
@@ -79,6 +82,13 @@
 |---|---|---|
 | **Multer** | `^2.2.0` | Multipart form-data handling (local temp storage) |
 | **Cloudinary SDK** | `^2.10.1` | Cloud media storage for images & videos |
+
+### Background Jobs
+
+| Tool | Version | Purpose |
+|---|---|---|
+| **Redis** | `6+` | BullMQ job storage and coordination |
+| **BullMQ** | `^6.3.8` | Reliable video processing and cleanup queues |
 
 ### Utilities & Dev
 
@@ -145,6 +155,30 @@ CastFeed follows a **layered MVC (Model-View-Controller)** architecture pattern:
 | **Temporary File Storage** | Multer saves uploads to `public/temp/` locally, then streamed to Cloudinary and cleaned up immediately with `fs.unlinkSync` |
 | **Token Strategy** | Short-lived Access Token (cookie + Bearer header) + long-lived Refresh Token (HTTP-only cookie + DB-stored) |
 | **MongoDB Aggregation** | Complex data joins use Mongoose Aggregation Pipelines with `$facet`, `$lookup`, `$addFields` for efficient single-query results |
+| **Background Jobs** | BullMQ queues video verification and stale-upload cleanup jobs in Redis so uploads do not block API requests |
+
+---
+
+## ⚙️ Background Video Processing
+
+Video uploads use an asynchronous processing pipeline:
+
+1. The API creates a video record in `UPLOADING` or `PROCESSING` state and queues a BullMQ job.
+2. The video worker verifies the Cloudinary asset, reads its authoritative metadata, and marks it `READY`.
+3. Failed jobs are retried up to three times with exponential backoff. Videos are marked `FAILED` after the final attempt.
+4. The cleanup scheduler runs every 15 minutes. The cleanup worker finds uploads older than two hours, removes any Cloudinary asset, and marks the record `FAILED`.
+
+Run the API, worker, and scheduler as separate processes:
+
+```bash
+cd backend
+npm run dev
+npm run worker:video
+npm run worker:cleanup
+npm run scheduler:cleanup
+```
+
+Redis must be running before starting the workers or scheduler.
 
 ---
 
@@ -152,14 +186,24 @@ CastFeed follows a **layered MVC (Model-View-Controller)** architecture pattern:
 
 ```
 castfeed/
-├── index.js                    # Entry point — DB connect + server start
-├── app.js                      # Express app setup, middleware, route mounting
-├── package.json
+├── backend/
+│   ├── index.js                # Entry point — DB connect + server start
+│   ├── app.js                  # Express app setup, middleware, route mounting
+│   ├── package.json
+│   ├── queues/
+│   │   ├── video.queue.js      # Video processing queue
+│   │   └── cleanup.queue.js    # Stale-upload cleanup queue
+│   ├── workers/
+│   │   ├── video.worker.js     # Cloudinary verification worker
+│   │   └── video-cleanup.worker.js # Stale-upload cleanup worker
+│   └── ...
+├── frontend/                   # React + Vite client
+│   ├── src/api/                # Axios API clients
+│   ├── src/components/         # Shared UI components
+│   └── src/pages/              # Upload, watch, and account pages
 ├── .env                        # Environment variables (not committed)
 ├── .gitignore
-├── public/
-│   └── temp/                   # Temporary local storage for uploaded files
-└── src/
+└── backend/src/
     ├── constant.js             # App-wide constants (token expiry times)
     ├── db/
     │   └── db.js               # MongoDB connection via Mongoose
@@ -190,6 +234,12 @@ castfeed/
     ├── middleware/
     │   ├── auth.middleware.js    # JWT verification middleware
     │   └── multer.middleware.js  # Multer disk storage config
+    ├── queues/
+    │   ├── video.queue.js        # BullMQ video processing queue
+    │   └── cleanup.queue.js      # BullMQ cleanup queue
+    ├── workers/
+    │   ├── video.worker.js       # Video verification and metadata worker
+    │   └── video-cleanup.worker.js # Timed-out upload cleanup
     └── utils/
         ├── asyncHandler.js       # Async try/catch wrapper
         ├── apiError.js           # Custom error class
@@ -225,7 +275,10 @@ castfeed/
 | `title` | String | required |
 | `description` | String | required |
 | `duration` | Number | auto-extracted from Cloudinary response |
+| `processingStatus` | String | `UPLOADING`, `PROCESSING`, `READY`, `FAILED`, or `CLEANING` |
+| `processingError` | String | Error details when processing or cleanup fails |
 | `views` | Number | default 0, incremented on fetch |
+| `cloudinaryPublicId` | String | Cloudinary asset identifier used by workers |
 | `isPublished` | Boolean | toggle-able by owner |
 | `owner` | ObjectId | ref to User, indexed |
 
@@ -377,7 +430,7 @@ Authorization: Bearer <accessToken>
 
 ## 🔐 Environment Variables
 
-Create a `.env` file in the project root:
+Create `backend/.env`:
 
 ```env
 PORT=8000
@@ -393,6 +446,10 @@ JWT_REFRESH_SECRET=your_refresh_token_secret
 CLOUDINARY_NAME=your_cloud_name
 CLOUDINARY_API_KEY=your_api_key
 CLOUDINARY_SECRET_KEY=your_api_secret
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
 ```
 
 > ⚠️ **Never commit your `.env` file.** It is already listed in `.gitignore`.
@@ -403,28 +460,45 @@ CLOUDINARY_SECRET_KEY=your_api_secret
 
 ### Prerequisites
 
-- Node.js `v18+`
+- Node.js `v22+`
 - MongoDB Atlas account (or local MongoDB)
 - Cloudinary account (free tier works)
+- Redis `6+`
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/akasahilsingh/castfeed.git
-cd castfeed
+git clone https://github.com/akasahilsingh/videox.git
+cd videox\backend
 
-# Install dependencies
+# Install backend dependencies
 npm install
 
-# Create environment file and fill in your values
-cp .env.example .env
+# Create backend/.env and fill in your values
 
 # Start the development server
-npm start
+npm run dev
 ```
 
-The server will start on `http://localhost:8000`.
+The API starts on `http://localhost:8000`. In separate terminals, start the workers:
+
+```bash
+cd backend
+npm run worker:video
+npm run worker:cleanup
+npm run scheduler:cleanup
+```
+
+To run the frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The Vite development server prints the frontend URL when it starts.
 
 ---
 
@@ -451,11 +525,12 @@ This file is intended to be used directly with AI design tools like **Claude**, 
 - [x] Channel subscriptions
 - [x] Channel profile & public stats
 - [x] Creator dashboard (stats + videos)
+- [x] BullMQ video processing and stale-upload cleanup
 - [ ] Playlist CRUD (in progress)
 - [ ] Tweet / community post feature
 - [ ] Search with full-text indexing
 - [ ] Notifications system
-- [ ] Frontend (React / Next.js)
+- [x] Frontend (React / Vite)
 
 ---
 

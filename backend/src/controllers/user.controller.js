@@ -8,34 +8,34 @@ import { v2 as cloudinary } from "cloudinary";
 import mongoose from "mongoose";
 
 const generateAccessTokenAndRefreshToken = async (userId) => {
-  try {
-    const user = await User.findById(userId);
-    const accessToken = user.generateAccessToken();
-    const refreshToken = user.generateRefreshToken();
-    user.refreshToken = refreshToken;
-    await user.save({ validateBeforeSave: false });
-    return { accessToken, refreshToken };
-  } catch (error) {
-    // throw new ApiError(500, "Error while genrating access and refresh tokens")
-    // console.log(error.message);
-  }
+  const user = await User.findById(userId);
+  if (!user) throw new ApiError(404, "User not found");
+
+  const accessToken = user.generateAccessToken();
+  const refreshToken = user.generateRefreshToken();
+  user.refreshToken = refreshToken;
+  await user.save({ validateBeforeSave: false });
+  return { accessToken, refreshToken };
 };
 
-export const deleteImgOnCloudinary = async (publicId) => {
+export const deleteImgOnCloudinary = async (publicId, resource_type = "image") => {
   try {
-    const res = await cloudinary.uploader.destroy(publicId);
+    const res = await cloudinary.uploader.destroy(publicId, { resource_type });
 
     return res;
   } catch (error) {
-    throw new ApiError(500, error?.message || "Unable to delete the image");
+    throw new ApiError(500, error?.message || "Unable to delete the asset");
   }
 };
 
 const isProduction = process.env.NODE_ENV === "production";
+// Cookie options – persistent refresh token (7 days)
 const options = {
   httpOnly: true,
-  secure: isProduction,       // false on localhost (HTTP), true in prod (HTTPS)
+  secure: isProduction, // false on localhost (HTTP), true in prod (HTTPS)
   sameSite: isProduction ? "strict" : "lax",
+  // 7 days in ms
+  maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
 const registerUser = asyncHandler(async (req, res) => {
@@ -233,9 +233,11 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 });
 
 const getCurrentUser = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user?._id).select("-password -refreshToken");
+
   res
     .status(200)
-    .json(new ApiResponse(200, req.user, "User fetched successfully"));
+    .json(new ApiResponse(200, user, "User fetched successfully"));
 });
 
 const updateAccountDetails = asyncHandler(async (req, res) => {

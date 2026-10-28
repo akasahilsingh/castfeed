@@ -8,7 +8,10 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "npx nodemon index.js"
+    "dev": "nodemon src/index.js",
+    "worker:video": "node src/workers/video.worker.js",
+    "worker:cleanup": "node src/workers/video-cleanup.worker.js",
+    "scheduler:cleanup": "node src/queues/cleanup.scheduler.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
